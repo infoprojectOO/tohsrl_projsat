@@ -8,6 +8,7 @@ import numpy as np
 import os
 import PIL
 from satclass import *
+import matplotlib
 import matplotlib.pyplot as mpl
 from mpl_toolkits.mplot3d import axes3d, proj3d
 import matplotlib.animation as animation
@@ -119,17 +120,30 @@ class earthPainter:
         xg = R_G * np.outer(np.cos(phi), np.sin(theta))
         yg = R_G * np.outer(np.sin(phi), np.sin(theta))
         zg = R_G * np.outer(np.ones(np.size(phi)), np.cos(theta))
+        rotmat = np.array(earth.tilt_rot.to_matrix())
+        xgr, ygr, zgr = rotmat.dot(np.vstack((xg.flatten(),yg.flatten(),zg.flatten())))
+        xg = xgr.reshape(xg.shape)
+        yg = ygr.reshape(yg.shape)
+        zg = zgr.reshape(zg.shape)
+
+
+
         ax = mpl.figure(frameon = False).add_subplot(111,projection = '3d')
         self.frame = ax.plot_wireframe(xg,yg,zg)
         self.frame.remove()
         ax.get_figure().clear()
         
 
-        self.phi0 = earth.rotang
-        self.rotation = Quaternion([0,0,1],self.phi0)
-        self.xm = R_G * np.cos(self.phi0)*np.sin(theta)
-        self.ym = R_G * np.sin(self.phi0)*np.sin(theta)
+        # self.phi0 = earth.phi[0]
+        self.rotation = Quaternion(earth.axis,earth.rotang)
+        # self.rotation.angle = self.phi0
+        m_rot = np.array((earth.tilt_rot*Quaternion([0,0,1],earth.rotang)).to_matrix())
+        # self.xm = R_G * np.cos(self.phi0)*np.sin(theta)
+        # self.ym = R_G * np.sin(self.phi0)*np.sin(theta)
+        self.xm = R_G * np.sin(theta)
         self.zm = R_G * np.cos(theta)
+
+        self.xm, self.ym, self.zm = m_rot.dot(np.array((self.xm,np.zeros((self.xm.shape)),self.zm)))
 
         self.meridian = Line3D(self.xm,self.ym,self.zm,color = 'y')
         self._see_globe = globe
@@ -138,8 +152,8 @@ class earthPainter:
 
 
     def update(self,index):
-        phirot = self.earth.phi[index]
-        self.rotation.angle = phirot
+        self.rotation.angle = self.earth.phi[index]-self.earth.rotang
+        m_rot = np.array((self.rotation).to_matrix())
         
         if(self._see_globe):
             m_rot = np.array(self.rotation.to_matrix())
@@ -148,7 +162,6 @@ class earthPainter:
             xr,yr,zr = xr.reshape(self.xglobe.shape), yr.reshape(self.xglobe.shape), zr.reshape(self.xglobe.shape)
             self.globe.set_verts(convert2vert(xr,yr,zr))
 
-        m_rot = np.array(Quaternion([0,0,1],phirot-self.phi0).to_matrix())
         xl,yl,zl = m_rot.dot(np.vstack((self.xm,self.ym,self.zm)))
         self.meridian.set_data(xl,yl)
         self.meridian.set_3d_properties(zl)
@@ -205,11 +218,11 @@ class Painter:
         if(board is None):
             board = self.board
         if(isinstance(obj,Orbit)):
-            self.paintOrbit(obj,board)
+            self.paintOrbit(obj,board,*args)
         elif(isinstance(obj,Satellite)):
-            self.paintSat(obj,board)
+            self.paintSat(obj,board,*args)
         elif(isinstance(obj,Projectile)):
-            self.paintProjectile(obj,board)
+            self.paintProjectile(obj,board,*args)
         elif(isinstance(obj,Earth)):
             self.paintEarth(obj,board,*args)
         else:
@@ -274,8 +287,8 @@ class Painter:
         board.set_ylabel('Y : wake dir')
         board.set_zlabel('Z : geo north dir')
 
-    def paintProjectile(self, proj,board):
-        board.plot_wireframe(proj.traj[:,0],proj.traj[:,1],proj.traj[:,2],color = 'r')
+    def paintProjectile(self, proj,board, c = 'r'):
+        board.plot_wireframe(proj.traj[:,0],proj.traj[:,1],proj.traj[:,2],color = c)
 
         # Plot projectile velocity at starting position
         mag = 200
@@ -331,7 +344,18 @@ def animate(t,painter,proj,ax, fig, save=False):
     mpl.show()
     return ani
 
-def plot(t,earth,sat,proj,**kwargs):
+def palette(color_0,n_colors):
+    increment  = 1/n_colors
+    mask = np.array((-0.2,1,0.25))
+    colors = [color_0]
+    for c in range(1,n_colors):
+        color = color_0+c*increment*mask
+        color = color%1
+        colors.append(color)
+    return colors
+
+
+def plot(t,earth,sat,proj,hypbox,**kwargs):
     mpl.close("all")
 
     animation_on = kwargs.pop('animation',False)
@@ -349,26 +373,35 @@ def plot(t,earth,sat,proj,**kwargs):
     renderer.paint(earth,ax,see_globe)
     renderer.paint(sat)
 
+    n_traj = len(proj)
+    colors = palette(np.array((1.,0,0)),n_traj)
     
     ani = None
     if(animation_on):
-        ani = animate(t,renderer,proj,ax, fig3d, save_anim)
+        ani = animate(t,renderer,proj[0],ax, fig3d, save_anim)
     else:
-        renderer.paint(proj,ax)
-        
-    alt_list = (np.linalg.norm(proj.traj,axis=1)-R_G)*0.001
+        for p in range(n_traj):
+            renderer.paint(proj[p],ax,colors[p])
+
+    alt_list = []
+    vel_list = []
+
+
+    for p in range(n_traj):
+        alt_list.append((np.linalg.norm(proj[p].traj,axis=1)-R_G)*0.001)
+        vel_list.append(np.linalg.norm(proj[p].vel,axis=1))
     
     # Plot descent and sat
     figproj = mpl.figure(2)
     ax = figproj.add_subplot(211)
-    ax.plot(t,(np.linalg.norm(proj.traj,axis=1)-R_G)*0.001,'r-')
+    for p in range(n_traj): ax.plot(t,alt_list[p],color = colors[p])
     ax.plot(t,(np.linalg.norm(sat.traj, axis=1)-R_G)*0.001,'g-')
     mpl.xlabel('Time (s)')
     mpl.ylabel('Altitude (km)')
     mpl.title('Projectile descent in atmosphere')
     
     ax = figproj.add_subplot(212)
-    ax.plot(alt_list[1:],earth.atm.rho_hist,'b-')
+    for p in range(n_traj): ax.plot(alt_list[p][1:],hypbox[p].rholine,color = colors[p])
     mpl.xlabel('Altitude (km)')
     mpl.ylabel('Density (kg/m³)')
     ax.set_yscale('log')
@@ -377,13 +410,13 @@ def plot(t,earth,sat,proj,**kwargs):
     # Plot velocity profile
     figvel = mpl.figure(4)
     ax = figvel.add_subplot(211)
-    ax.plot((np.linalg.norm(proj.traj,axis=1)-R_G)*0.001,np.linalg.norm(proj.vel,axis=1),'r-')
+    for p in range(n_traj): ax.plot(alt_list[p],vel_list[p], color = colors[p])
     mpl.xlabel('Altitude (km)')
     mpl.ylabel('Speed (km/s)')
     mpl.title('Projectile velocity during descent in atmosphere')
 
     ax = figvel.add_subplot(212)
-    ax.plot(proj.Kn,np.linalg.norm(proj.vel,axis=1)[1:],'r-')
+    for p in range(n_traj): ax.plot(hypbox[p].Knline,vel_list[p][1:], color = colors[p])
     mpl.xlabel('Knudsen (\lambda/d)')
     ax.set_xscale('log')
     mpl.ylabel('Speed (km/s)')
@@ -392,18 +425,66 @@ def plot(t,earth,sat,proj,**kwargs):
     # Plot line of sight
     figlos = mpl.figure(3)
     losvec = figlos.add_subplot(211)
-    m_plane = methu.plane_proj(proj.r_0,proj.v_0)
-    lostraj = m_plane.dot(sat.lostraj.T).T
-    losvec.plot(lostraj[:,0],lostraj[:,1],'c:o')
+    for p in range(n_traj):
+        m_plane = methu.plane_proj(proj[p].r_0,proj[p].v_0)
+        lostraj = m_plane.dot(sat.lostraj[proj[p]].T).T
+        losvec.plot(lostraj[:,0],lostraj[:,1], color = colors[p], marker = 'o', linestyle = ':')
 
     losang = figlos.add_subplot(212)
     vec_ref = np.cross(sat.orbit.getVel(sat.nu),-sat.orbit.getPos(sat.nu))
     vec_ref = vec_ref/np.linalg.norm(vec_ref)
     vec_ref = np.tile(vec_ref,sat.traj.shape[0]).reshape(sat.traj.shape)
-    ang = methu.angle_vec(-sat.traj,sat.lostraj,vec_ref)
-    losang.plot(t,ang,'c')
+    for p in range(n_traj):
+        ang = methu.angle_vec(-sat.traj,sat.lostraj[proj[p]],vec_ref)*180/np.pi
+        losang.plot(t,ang,color = colors[p])
     mpl.xlabel('Time (s)')
     mpl.ylabel('Angle ( ° )')
     mpl.title('Pointing angle relative to Nadir in orbital dextrogyre reference frame')
 
+    # Plot drag coefficient
+    figdrag = mpl.figure(5)
+    ax = figdrag.add_subplot(111)
+    for p in range(n_traj): ax.plot(hypbox[p].dragline,alt_list[p][1:],color = colors[p])
+    mpl.xlabel('Altitude (km)')
+    mpl.ylabel('Drag coefficient')
+    mpl.title('Projectile drag coefficient at different altitudes')
+
     return ani
+
+def compare(t,proj,hypbox):
+    n_traj = len(proj)
+    colors = palette(np.array((1.,0,0)),n_traj)
+    alt_list = []
+    for p in range(n_traj):
+        alt_list.append((np.linalg.norm(proj[p].traj,axis=1)-R_G)*0.001)
+    alt_comp = np.linalg.norm(proj[0].traj-proj[1].traj, axis = 1)*0.001
+    vel_comp = np.linalg.norm(proj[0].vel-proj[1].vel, axis = 1)
+    
+    # Plot drag coefficient
+    figdrag = mpl.figure(5)
+    ax = figdrag.add_subplot(311)
+    for p in range(n_traj): ax.plot(alt_list[p][1:],hypbox[p].dragline,color = colors[p])
+    mpl.xlabel('Altitude (km)')
+    mpl.ylabel('Drag coefficient')
+    mpl.title('Projectile drag coefficient at different altitudes')
+    
+    ax = figdrag.add_subplot(312)
+    ax.plot(t,alt_comp,'r-')
+    mpl.xlabel('Time (s)')
+    mpl.ylabel('Altitude difference (km)')
+    
+    ax = figdrag.add_subplot(313)
+    ax.plot(t,vel_comp,'r-')
+    mpl.xlabel('Time (s)')
+    mpl.ylabel('Velocity difference (m/s)')
+
+    
+
+def plot_atm(atmosphere):
+    lat, lon, name = Reference.get_refloc()
+    rho_scale, h_scale = atmosphere.profile(np.linspace(50,400,801),lat, lon)
+    mpl.figure()
+    mpl.plot(h_scale,rho_scale,'b-')
+    mpl.title('Density profile at {0:+.2f} Latitude, {1:+.2f} Longitude ({2})'.format(lat*180/m.pi,lon*180/m.pi,name))
+    mpl.xlabel('Altitude (km)')
+    mpl.ylabel('Mass Density (kg/m³)')
