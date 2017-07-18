@@ -18,43 +18,47 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import mpl_toolkits.mplot3d.art3d as art3d
 from matplotlib import colors as mcolors
 from methutil import cube
+from scipy.optimize import curve_fit
+from satclass import *
 
-#Input conversionµ
-# mpl.close("all")
-# fig = mpl.figure()
-# ax = fig.add_subplot(111,projection = '3d')
-# #ax = p3.Axes3D(fig)
-# sat = ale_sat
-# proj = projectile
-# board = ax
-# cam = ale_sat.camera
-# rim = 0.5
+#Input conversion
+mpl.close("all")
+#fig = mpl.figure()
+#ax = fig.add_subplot(111,projection = '3d')
+sat = ale_sat
+proj = projectile
+#board = ax
+#cam = ale_sat.camera
+#atmosphere = earth.atm
+#atm = earth.atm
+# orbit = Orbit((a_sat,e_sat,i_sat,Om_sat,wp_sat))
 
-r_sat = [0,0,0]
+r_sat  = sat.traj[0,:]
+r_sat = np.array([np.sqrt(2)/2*R_G,0,np.sqrt(2)/2*R_G])
+r = np.linalg.norm(r_sat)
+theta = m.acos(r_sat[2]/r)
+phi = m.atan(r_sat[1]/r_sat[0])
+as_legendre = sp.special.lpmv
+" Find the gravitational potential at the desired point. "
+grav_acc = 0.0 # Potential of the gravitational field at the stateVec location.
+grav_pot = 0.0
+for n in range(0, 10+1): # Go through all the desired orders and compute the geoid corrections to the sphere.
+    term = 0. # Contribution to the potential from the current degree and all corresponding orders.
+    for k in range(n+1): # Go through all the orders corresponding to the currently evaluated degree.
+        norm = np.sqrt((2*n+1)*m.factorial(n-k)/m.factorial(n+k))
+        term += norm * as_legendre(k,n,np.cos(theta)) * (earth.Cc[n][k]*np.cos(k*phi) + earth.Sc[n][k]*np.sin( k*phi ))
+        print((n,k)," : ",norm *as_legendre(k,n,m.cos(theta)))
+            
+    grav_acc += -(n+1)*m.pow(earth.R/r, n+1)/r * term # Add the contribution from the current degree.
+    grav_pot += m.pow(earth.R/r, n+1) * term
+    
+grav_acc *= earth.mu/earth.R # Final correction.
+grav_pot *= earth.mu/earth.R
 
-rho = density(100)
-
-output = atm.nrlmsise_output()
-inputatm = atm.nrlmsise_input(year = 2000, doy = 1, sec = 0.0, alt=100.0, g_lat=30., g_long=50.0,
-                 lst=0.0, f107A=150., f107=150.0, ap=4.0, ap_a=None)
-flags = atm.nrlmsise_flags()
-flags.switches[1:] = [1]*(len(flags.switches)-1)
-
-flags.switches[0] = 1
-gtd7(inputatm,flags,output)
-rho2 = output.d[5]
-T = output.t[1]
-b_air = 1.458e-6 # kg/ms(K)^0.5
-S_air = 110.4 # K
-visc = b_air*T**(1.5)/(T+S_air)
-Re = rho2*7000**2*0.002/visc
-print('First : ',rho2,'\n')
-
-for i in range(1,len(flags.switches)):
-    try:
-        flags.switches[i] = 0
-        flags.switches[i-1] = 1
-        gtd7(inputatm,flags,output)
-    except(ZeroDivisionError):
-        print('error :', i)
-    print('test :', i, (rho2-output.d[5])/rho2)
+" Compute the acceleration due to the gravity potential at the given point. "
+grav_accel = -(r_sat/r) * grav_pot/r
+for deg in range(10):
+    for order in range(deg+1):
+        norm = np.sqrt((2*deg+1)/2*m.factorial(deg-order)/m.factorial(deg+order))
+        print((deg,order),' : ', norm*sp.special.lpmv(order,deg,0))
+        

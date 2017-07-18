@@ -9,7 +9,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 def N_coll(n_mean):
 	if(n_mean >= 50):
-		n_coll = int(np.random.normal(n_mean,0.5*n_mean))
+		n_coll = int(np.random.normal(n_mean,1/m.sqrt(n_mean)))
 	else:
 		n_coll = 0
 		for i in range(int(n_mean)*4):
@@ -32,6 +32,8 @@ alt_ini = 400 * 1000 # m
 alt_tar = 100 * 1000 # m
 MM_air = 0.0289644 # kg/mol
 N_A = 6.023 * 10**23
+
+userinput = False
 
 # Location and time coordinates
 if(userinput):
@@ -61,9 +63,9 @@ sigma_c = 1e-19 # m²
 
 #r_p = np.array([0.,0.,alt_ini+R_G]) # m
 r_p = sphe2cart(r_apog,latitude,longitude) # m
-r_p = r_sat
-v_p = np.array([0.,0.,0.]) # m/s
-v_p = 0.9*v_sat
+#r_p = r_sat
+v_p = np.array([7000.,0.,0.]) # m/s
+#v_p = 0.9*v_sat
 #v_p[0] = m.sqrt(2*mu_G*((1/r_apog)-1/(2*a_dga)))
 #v_p[0] = m.sqrt(2*mu_G*(1/(2*r_apog))) # Circular Orbit at 400 km
 a_p = np.array([0.,0.,-mu_G/(np.linalg.norm(r_p))**2])
@@ -110,9 +112,6 @@ while (Kn >= 1 and n_it <= N_itmax):
 	a_p = -r_p/np.linalg.norm(r_p)*mu_G/(np.linalg.norm(r_p))**2
 	v_p_old = v_p
 	v_p = v_p + a_p*dt + dv_coll
-
-	#dv_coll = - n_coll*MM_air/m_p * v_p
-	v_p = v_p #+ dv_coll
 
 	#r_p = r_p + (v_p_old+v_p)*0.5*dt
 	r_p = r_p + (2*v_p)*0.5*dt
