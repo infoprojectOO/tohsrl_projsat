@@ -99,9 +99,24 @@ speed_p = v_p[:]
 traj_p = r_p[:]
 n_it = 0
 
+
+
 while (Kn >= 1 and n_it <= N_itmax):
 
-	alt = np.linalg.norm(r_p)-R_G
+	# alt = altitude (m)
+	# r_p = projectile vector position (m)
+	# R_G = earth radius (m)
+	# S_p = projectile surface (m²)
+	# N_A = avogadro number (for moles)
+	# MM_air = air mean mass per mole (kg/mol)
+	# sigma_c = air mean collisional cross section (m²)
+	# m_p = projectile mass (kg)
+	# v_p = projectile velocity vector (m/s)
+	# mu_G = earth's gravity constant (m³/s²)
+	# d_p = projectile diameter (m)
+	# a_p = projectile gravity acceleration vector (m/s²)
+
+	alt = np.linalg.norm(r_p)-R_G 
 	volume = S_p*np.linalg.norm(v_p)*dt # Tube volume covered by projectile during dt
 	n_volmean = density(alt*0.001)*N_A/(MM_air)
 	lpm = 1/(m.sqrt(2)*n_volmean*sigma_c)
