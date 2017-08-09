@@ -13,7 +13,7 @@ import methutil as methu
 import sys
 import graphics as gp
 import numpy as np
-import sgp4
+#import sgp4
 import matplotlib.pyplot as mpl
 import datetime
 import methutil as methu
@@ -23,6 +23,8 @@ import param
 import subprocess
 from satclass import *
 from graphics import Painter
+from ParametersEditor import ParamInput
+from ds2v2py import manSimIter
 # del sys.modules['satclass']
 # import satclass
 # reload(satclass)
@@ -104,8 +106,8 @@ mechanics = Mechanics.initialise()
 earth = Earth.create()
 earth.setDate(date)
 projectile = Projectile(d_p,rho_p)
-proj_spec = Projectile(d_p,rho_p,Projectile.smooth)
-proj_diff = Projectile(d_p,rho_p,Projectile.coarse)
+#proj_spec = Projectile(d_p,rho_p,Projectile.smooth)
+#proj_diff = Projectile(d_p,rho_p,Projectile.coarse)
 orbit = Orbit((a_sat,e_sat,i_sat,Om_sat,wp_sat))
 schedule = Schedule()
 mechanics.set(earth,schedule)
@@ -119,141 +121,164 @@ mechanics.add_animate(ale_sat)
 mechanics.add_animate(earth)
 
 schedule.plan('Orbiting phase', None, timelap, time = 0, duration = iter([timelap]))
-#schedule.plan('Projectile ejection', ale_sat.eject, projectile,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(projectile) )
-schedule.plan('Coarse Projectile ejection', ale_sat.eject, proj_diff,(eject_v_abs*0.95,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(proj_diff) )
-schedule.plan('Smooth Projectile ejection', ale_sat.eject, proj_spec,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(proj_spec) )
+schedule.plan('Projectile ejection', ale_sat.eject, projectile,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(projectile) )
+#schedule.plan('Coarse Projectile ejection', ale_sat.eject, proj_diff,(eject_v_abs*0.95,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(proj_diff) )
+#schedule.plan('Smooth Projectile ejection', ale_sat.eject, proj_spec,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(proj_spec) )
 
 mechanics.start()
 
-t = mechanics.timeline[1:]
+path = r'D:\Program\DSMC\DS2V\DS2VD.dat'
+lat, lon = earth.pos2coord(projectile.r)
+air = earth.atm.at(0,np.linalg.norm(projectile.r)-R_G,lat, lon)
+print(air.p)
 
-r0_sat = orbit.getPos(ale_sat.nu_0)
-r_sat = orbit.getPos(ale_sat.nu)
-v_sat = orbit.getVel2(ale_sat.nu)
+print('Starting contdition:\nDensity = ' + str(air.nv) + ',\t Temp = ' + str(air.T) + ',\t Vx = ' + str(np.linalg.norm(projectile.v)) + '\nat alt = ' + str((np.linalg.norm(projectile.r)-R_G)/1000))
+ParamInput(air.nv,air.T,air.T,np.linalg.norm(projectile.v),path)
 
-print('Satellite Starting position : ',r0_sat, )
-print('Satellite Flight time : ',timelap*n/(2*m.pi))
-print('Satellite Ending position : ',r_sat)
-print('Satellite Ending speed : ',v_sat)
-
-
-# print('Projectile ejection speed : ', np.linalg.norm(projectile.v_0))
-# print('Projectile inbound speed : ', np.linalg.norm(projectile.v))
-# print(projectile.v_0)
-
-
-# Plot orbit trajectory
-#ani = gp.plot(t,earth,ale_sat,projectile,mechanics.boxes[projectile],animation = True, globe = False)
-boxes = [mechanics.boxes[proj_diff],mechanics.boxes[proj_spec]]
-ani = gp.plot(t,earth,ale_sat,[proj_diff,proj_spec],boxes,animation = False, globe = False)
-
-def solve(projectile,atmosphere):
-    global earth
-    m = projectile.m
-    S = projectile.S
-    r0 = projectile.traj[0,:] # Starting position
-    v0 = projectile.vel[0,:] # Starting velocity
-    r_end = projectile.traj[-1,:] # Ending position
-
-    lat, lon, name = Reference.get_refloc()
-    transorbit = Orbit.retrieve(r0,v0)
-
-    # --------------------- old not working junk !
-    # x = v | z = r
-    # x,z = symbols('x, z', real=True)
-    # a,b = fit_atm(atmosphere)
-    # eq = [ m*mu_G/(z*1000+R_G)**2  - 0.5*1*(a*exp(b*z))*S*x**2, 
-    #        x - sqrt(mu_G/(R_G+z*1000)-29.56*10**6)]
-    # sym = [x,z]
-    # sol = nls(eq,sym)
-    # ----------------------
-
-    nu0, nu_end = transorbit.get_nu([np.linalg.norm(r0),50*1000+R_G])
-    nu_scale = np.linspace(nu0,nu_end,1001)
-    orbtraj = transorbit.getPos(nu_scale)
-    orbvel = transorbit.getVel(nu_scale)
-    h_scale = (np.linalg.norm(orbtraj,axis = 1)-R_G)*0.001
-    rho_scale, h_scale = atmosphere.profile(h_scale)
-    Fg = m*mu_G/(R_G+h_scale*1000)**2
-    Fd = 0.5*1*S*rho_scale*np.linalg.norm(orbvel,axis=1)**2
-    slope_scale = transorbit.get_slope(nu_scale)
-    h_low = np.argmin(abs(h_scale-50))
-    h_upp = np.argmin(abs(h_scale-120))
-    resind = np.argmin(abs(Fd[h_upp:h_low]-(Fg[h_upp:h_low]*np.sin(-slope_scale[h_upp:h_low]))))+h_upp
-
-    ht = h_scale[resind] # target altitude    
+print('\nNow please open DS2V for simulation')
+check = ''
+cont = 'y'
+i_it = 0
+while (check != 'r'):
+    check = input('Ready? (r): ')
+while (cont == 'y'):
+    Cd = input('Please retrieve Drag Coef from DS2V\n Cd = ')
+    rho, nv, T, v_pnorm, alt, projectile = manSimIter(projectile,earth,float(Cd))
+    ParamInput(nv,T,T,v_pnorm,path)
+    print('Density = ' + str(nv) + ',\t Temp = ' + str(T) + ',\t Vx = ' + str(v_pnorm) + '\nat alt = ' + str(alt/1000))
+    print('Surface:' + str(projectile.S))
+    cont = input('Continue? (y/n): ')
 
 
-    intf = methu.integrate((Fd[:resind],(Fg*np.sin(-slope_scale))[:resind]),orbtraj[:resind])
-    gain = mu_G/(R_G+h_scale[-1]) - mu_G/(R_G+ht)
-    subtract = gain*(1-abs(intf[0])/abs(intf[1]))
-
-    sol = (h_scale[resind], np.linalg.norm(orbvel[resind,:]), np.sqrt(np.linalg.norm(orbvel[0,:])**2+2*subtract))
-    figforce = mpl.figure()
-    lg,ld = mpl.plot(h_scale,Fg*np.sin(-slope_scale),h_scale,Fd)
-    mpl.title('Drag force extrapolation vs. projectile weight projected on its trajectory')
-    mpl.xlabel('Altitude (km)')
-    mpl.ylabel('Force (N)')
-    mpl.legend((lg,ld), ('Weight','Drag'), loc=1)
-
-    figtraj = mpl.figure()
-    axtraj = figtraj.add_subplot(111,projection='3d')
-    renderer = Painter(figtraj,axtraj)
-    #renderer.paint(transorbit)
-    #renderer.paint(earth)
-   
-    axtraj.plot(orbtraj[:,0], orbtraj[:,1], orbtraj[:,2],'c-')
-    axtraj.plot(projectile.traj[:,0],projectile.traj[:,1],projectile.traj[:,2],'r-')
-
-    #-------------------------------- Debugging ---------------------------
-
-    # Dh = h_scale[0]-h_scale[-1]
-    # dr = (np.roll(orbtraj,1,axis=0)-orbtraj)[0:-1]
-    # drnorm = np.linalg.norm(dr,axis=1)
-    # Dh_approx = np.vdot(drnorm,np.sin(abs(slope_scale[:-1])))
-
-    # nu_hist = transorbit.get_nu(np.linalg.norm(projectile.traj,axis=1))
-    # r_hist = transorbit.getPos(nu_hist)
-    # v_hist = transorbit.getVel(nu_hist)
-    # h_hist = (np.linalg.norm(r_hist,axis=1)-R_G)*0.001
-    # mpl.figure()
-    # mpl.plot(h_hist,np.linalg.norm(projectile.vel,axis=1),'r-')
-    # mpl.plot(h_hist,np.linalg.norm(v_hist,axis=1),'c-')
-
-    #----------------------------------------------------------------------
-
-    return sol, intf, subtract
-
-#sol, intf, subtract = solve(projectile,earth.atm)
-#---------------------------------------------------------
-#debugger
-
-v_0 = projectile.v_0
-nu = ale_sat.nu
-M = ale_sat.M
-vel2rel = orbit.getVel2Rel(nu)
-dvx = eject_v_abs*(m.cos(eject_theta))
-dvy = eject_v_abs*(m.sin(eject_theta)*m.cos(eject_phi))
-dvz = eject_v_abs*(m.sin(eject_theta)*m.sin(eject_phi))
-dv = np.array([dvx,dvy,dvz])
-rel2abs = orbit.rel2abs
-vel2rel = orbit.getVel2Rel(nu)
-
-r = a_sat*(1-e_sat**2)/(1+e_sat*m.cos(nu))
-v = m.sqrt(mu_G*(2/r-1/a_sat))
-rnorm = np.linalg.norm(r_sat)
-vnorm = np.linalg.norm(v_sat)
-v_radmeth = orbit.getVel(nu)
-v_tanmeth = orbit.getVel2(nu)
-
-v_x = -m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*m.sin(nu)
-v_y = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*(e_sat+m.cos(nu))
-v_r = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*e_sat*m.sin(nu)
-v_t = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*(1+e_sat*m.cos(nu))
-
-ref = np.array([0.,0.,1.])
-pointing = r_sat/np.linalg.norm(r_sat)
-rot_vec = np.cross(ref,pointing)
-attitude = Quaternion(rot_vec/np.linalg.norm(rot_vec),m.asin(np.linalg.norm(rot_vec)))
-
-xd, yd, zd = np.array(ale_sat.attitude.to_matrix()).dot(np.array([0,0,ale_sat.width]))+r_sat
+#t = mechanics.timeline[1:]
+#
+#r0_sat = orbit.getPos(ale_sat.nu_0)
+#r_sat = orbit.getPos(ale_sat.nu)
+#v_sat = orbit.getVel2(ale_sat.nu)
+#
+#print('Satellite Starting position : ',r0_sat, )
+#print('Satellite Flight time : ',timelap*n/(2*m.pi))
+#print('Satellite Ending position : ',r_sat)
+#print('Satellite Ending speed : ',v_sat)
+#
+#
+## print('Projectile ejection speed : ', np.linalg.norm(projectile.v_0))
+## print('Projectile inbound speed : ', np.linalg.norm(projectile.v))
+## print(projectile.v_0)
+#
+#
+## Plot orbit trajectory
+##ani = gp.plot(t,earth,ale_sat,projectile,mechanics.boxes[projectile],animation = True, globe = False)
+#boxes = [mechanics.boxes[proj_diff],mechanics.boxes[proj_spec]]
+#ani = gp.plot(t,earth,ale_sat,[proj_diff,proj_spec],boxes,animation = False, globe = False)
+#
+#def solve(projectile,atmosphere):
+#    global earth
+#    m = projectile.m
+#    S = projectile.S
+#    r0 = projectile.traj[0,:] # Starting position
+#    v0 = projectile.vel[0,:] # Starting velocity
+#    r_end = projectile.traj[-1,:] # Ending position
+#
+#    lat, lon, name = Reference.get_refloc()
+#    transorbit = Orbit.retrieve(r0,v0)
+#
+#    # --------------------- old not working junk !
+#    # x = v | z = r
+#    # x,z = symbols('x, z', real=True)
+#    # a,b = fit_atm(atmosphere)
+#    # eq = [ m*mu_G/(z*1000+R_G)**2  - 0.5*1*(a*exp(b*z))*S*x**2, 
+#    #        x - sqrt(mu_G/(R_G+z*1000)-29.56*10**6)]
+#    # sym = [x,z]
+#    # sol = nls(eq,sym)
+#    # ----------------------
+#
+#    nu0, nu_end = transorbit.get_nu([np.linalg.norm(r0),50*1000+R_G])
+#    nu_scale = np.linspace(nu0,nu_end,1001)
+#    orbtraj = transorbit.getPos(nu_scale)
+#    orbvel = transorbit.getVel(nu_scale)
+#    h_scale = (np.linalg.norm(orbtraj,axis = 1)-R_G)*0.001
+#    rho_scale, h_scale = atmosphere.profile(h_scale)
+#    Fg = m*mu_G/(R_G+h_scale*1000)**2
+#    Fd = 0.5*1*S*rho_scale*np.linalg.norm(orbvel,axis=1)**2
+#    slope_scale = transorbit.get_slope(nu_scale)
+#    h_low = np.argmin(abs(h_scale-50))
+#    h_upp = np.argmin(abs(h_scale-120))
+#    resind = np.argmin(abs(Fd[h_upp:h_low]-(Fg[h_upp:h_low]*np.sin(-slope_scale[h_upp:h_low]))))+h_upp
+#
+#    ht = h_scale[resind] # target altitude    
+#
+#
+#    intf = methu.integrate((Fd[:resind],(Fg*np.sin(-slope_scale))[:resind]),orbtraj[:resind])
+#    gain = mu_G/(R_G+h_scale[-1]) - mu_G/(R_G+ht)
+#    subtract = gain*(1-abs(intf[0])/abs(intf[1]))
+#
+#    sol = (h_scale[resind], np.linalg.norm(orbvel[resind,:]), np.sqrt(np.linalg.norm(orbvel[0,:])**2+2*subtract))
+#    figforce = mpl.figure()
+#    lg,ld = mpl.plot(h_scale,Fg*np.sin(-slope_scale),h_scale,Fd)
+#    mpl.title('Drag force extrapolation vs. projectile weight projected on its trajectory')
+#    mpl.xlabel('Altitude (km)')
+#    mpl.ylabel('Force (N)')
+#    mpl.legend((lg,ld), ('Weight','Drag'), loc=1)
+#
+#    figtraj = mpl.figure()
+#    axtraj = figtraj.add_subplot(111,projection='3d')
+#    renderer = Painter(figtraj,axtraj)
+#    #renderer.paint(transorbit)
+#    #renderer.paint(earth)
+#   
+#    axtraj.plot(orbtraj[:,0], orbtraj[:,1], orbtraj[:,2],'c-')
+#    axtraj.plot(projectile.traj[:,0],projectile.traj[:,1],projectile.traj[:,2],'r-')
+#
+#    #-------------------------------- Debugging ---------------------------
+#
+#    # Dh = h_scale[0]-h_scale[-1]
+#    # dr = (np.roll(orbtraj,1,axis=0)-orbtraj)[0:-1]
+#    # drnorm = np.linalg.norm(dr,axis=1)
+#    # Dh_approx = np.vdot(drnorm,np.sin(abs(slope_scale[:-1])))
+#
+#    # nu_hist = transorbit.get_nu(np.linalg.norm(projectile.traj,axis=1))
+#    # r_hist = transorbit.getPos(nu_hist)
+#    # v_hist = transorbit.getVel(nu_hist)
+#    # h_hist = (np.linalg.norm(r_hist,axis=1)-R_G)*0.001
+#    # mpl.figure()
+#    # mpl.plot(h_hist,np.linalg.norm(projectile.vel,axis=1),'r-')
+#    # mpl.plot(h_hist,np.linalg.norm(v_hist,axis=1),'c-')
+#
+#    #----------------------------------------------------------------------
+#
+#    return sol, intf, subtract
+#
+##sol, intf, subtract = solve(projectile,earth.atm)
+##---------------------------------------------------------
+##debugger
+#
+#v_0 = projectile.v_0
+#nu = ale_sat.nu
+#M = ale_sat.M
+#vel2rel = orbit.getVel2Rel(nu)
+#dvx = eject_v_abs*(m.cos(eject_theta))
+#dvy = eject_v_abs*(m.sin(eject_theta)*m.cos(eject_phi))
+#dvz = eject_v_abs*(m.sin(eject_theta)*m.sin(eject_phi))
+#dv = np.array([dvx,dvy,dvz])
+#rel2abs = orbit.rel2abs
+#vel2rel = orbit.getVel2Rel(nu)
+#
+#r = a_sat*(1-e_sat**2)/(1+e_sat*m.cos(nu))
+#v = m.sqrt(mu_G*(2/r-1/a_sat))
+#rnorm = np.linalg.norm(r_sat)
+#vnorm = np.linalg.norm(v_sat)
+#v_radmeth = orbit.getVel(nu)
+#v_tanmeth = orbit.getVel2(nu)
+#
+#v_x = -m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*m.sin(nu)
+#v_y = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*(e_sat+m.cos(nu))
+#v_r = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*e_sat*m.sin(nu)
+#v_t = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*(1+e_sat*m.cos(nu))
+#
+#ref = np.array([0.,0.,1.])
+#pointing = r_sat/np.linalg.norm(r_sat)
+#rot_vec = np.cross(ref,pointing)
+#attitude = Quaternion(rot_vec/np.linalg.norm(rot_vec),m.asin(np.linalg.norm(rot_vec)))
+#
+#xd, yd, zd = np.array(ale_sat.attitude.to_matrix()).dot(np.array([0,0,ale_sat.width]))+r_sat

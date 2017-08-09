@@ -484,6 +484,7 @@ class Atmosphere:
             self.S_air = 110.4 # K
 
         def set_state(self,rho,T):
+            self.p = rho*self.R_m*T
             self.rho = rho # mass density
             self.nv = rho*self.N_A/self.MM_air # particle density
             self.mean_free_path = 1/(m.sqrt(2)*self.nv*self.sigma_c) # mean free path between collisions

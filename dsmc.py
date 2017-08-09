@@ -41,7 +41,7 @@ R_m = 8.315/MM_air # Jmol/kgK
 U = 7000 # m/s
 T = 200 # K
 
-molc_scaling = 10**6
+molc_scaling = 10**9
 sigma_c = 1e-19 # m²
 mfp = 1/(np.sqrt(2)*sigma_c*n_molc)
 
@@ -80,7 +80,7 @@ def gridivide(xb,yb,zb,L):
     cell_pos = np.array(list(product(xc,yc,zc)))
     cell_indexes = np.reshape(np.array([x for x in range(cell_pos.shape[0])]),(len(xc),len(yc),len(zc)))
     for c in range(cell_pos.shape[0]):
-        cells.append(Cellule(np.array(cell_pos[c,:]),prod(L_size),c))
+        cells.append(Cellule(np.array(cell_pos[c,:]),np.prod(L_size),c))
     np.reshape(cells,(len(xc),len(yc),len(zc)))
     return cells, cell_indexes, L_size, grid
 
@@ -88,7 +88,7 @@ cells, cell_indexes, cell_size, grid = gridivide(x_bound,y_bound,z_bound,L_cell)
 
 def genmolc(cells,cell_size,n_gloc,vel_gen):
     glocs = []
-    N_gloc_cell = int(np.round(prod(cell_size)*n_gloc))
+    N_gloc_cell = int(np.round(np.prod(cell_size)*n_gloc))
     sample_glocs = []
     for i in range(N_gloc_cell):
         print('Gloc n° : ',i,'/', N_gloc_cell)
