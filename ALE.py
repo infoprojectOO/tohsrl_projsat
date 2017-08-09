@@ -19,19 +19,13 @@ import datetime
 import methutil as methu
 from matplotlib.patches import FancyArrowPatch
 from itertools import product, combinations
-import param
+import param  as cst
 import subprocess
 from satclass import *
 from graphics import Painter
 # del sys.modules['satclass']
 # import satclass
 # reload(satclass)
-
-def sphe2cart(r,lat,lon):
-    x = r*np.cos(lat)*np.cos(lon)
-    y = r*np.cos(lat)*np.sin(lon)
-    z = r*np.sin(lat)
-    return np.array([x,y,z])
 
 def tle2params(filename):
     f = open(filename,'r')
@@ -46,12 +40,12 @@ def tle2params(filename):
             'Y' : year, 'D' : day, 'B_' : ballistic_star_coefficient}
     return data
 
-mu_G = 398600.4418 * 10**9 # m³/s²
-R_G = 6378.1 * 10**3 # m 
+# mu_G = 398600.4418 * 10**9 # m³/s²
+# R_G = 6378.1 * 10**3 # m 
 
-MM_air = 0.0289644 # kg/mol
-N_A = 6.023 * 10**23
-sigma_c = 1e-19 # m²
+# MM_air = 0.0289644 # kg/mol
+# N_A = 6.023 * 10**23
+# sigma_c = 1e-19 # m²
 
 
 # Satellite orbital parameters
@@ -87,10 +81,9 @@ n = m.sqrt(mu_G/a_sat**3)
 
 timelap = 0.25*2*m.pi / n # s
 
-# Projectile properties
-d_p = 0.01 #m
-rho_p = 8.96 * 1000 # kg/m³ copper
-C_D= 2.5
+# # Projectile properties
+# d_p = 0.01 #m
+# rho_p = 8.96 * 1000 # kg/m³ copper
 
 # Ejection parameters
 eject_theta = 180. * m.pi/180. # (inverse) Pitching
@@ -103,11 +96,12 @@ eject_v_rel = 0.9
 mechanics = Mechanics.initialise()
 earth = Earth.create()
 earth.setDate(date)
-projectile = Projectile(d_p,rho_p)
-proj_spec = Projectile(d_p,rho_p,Projectile.smooth)
-proj_diff = Projectile(d_p,rho_p,Projectile.coarse)
+projectile = Projectile(cst.d_p,cst.Material.COPPER)
+proj_spec = Projectile(cst.d_p,cst.Material.COPPER,Projectile.smooth)
+proj_diff = Projectile(cst.d_p,cst.Material.COPPER,Projectile.coarse)
 orbit = Orbit((a_sat,e_sat,i_sat,Om_sat,wp_sat))
 schedule = Schedule()
+timegen = TimeGenerators()
 mechanics.set(earth,schedule)
 
 
@@ -119,9 +113,9 @@ mechanics.add_animate(ale_sat)
 mechanics.add_animate(earth)
 
 schedule.plan('Orbiting phase', None, timelap, time = 0, duration = iter([timelap]))
-#schedule.plan('Projectile ejection', ale_sat.eject, projectile,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(projectile) )
-schedule.plan('Coarse Projectile ejection', ale_sat.eject, proj_diff,(eject_v_abs*0.95,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(proj_diff) )
-schedule.plan('Smooth Projectile ejection', ale_sat.eject, proj_spec,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = TimeGenerators.projectileTimeGenerator(proj_spec) )
+schedule.plan('Projectile ejection', ale_sat.eject, projectile,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projectile,10**4))
+# schedule.plan('Coarse Projectile ejection', ale_sat.eject, proj_diff,(eject_v_abs*0.95,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(proj_diff) )
+# schedule.plan('Smooth Projectile ejection', ale_sat.eject, proj_spec,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(proj_spec) )
 
 mechanics.start()
 
@@ -141,11 +135,18 @@ print('Satellite Ending speed : ',v_sat)
 # print('Projectile inbound speed : ', np.linalg.norm(projectile.v))
 # print(projectile.v_0)
 
+hypbox = mechanics.boxes[projectile]
+ghostectile = hypbox.ghost
+ghostbox = hypbox.ghostbox
+dsmc = hypbox.dsmc
+dsmc.abort_all()
+
 
 # Plot orbit trajectory
-#ani = gp.plot(t,earth,ale_sat,projectile,mechanics.boxes[projectile],animation = True, globe = False)
-boxes = [mechanics.boxes[proj_diff],mechanics.boxes[proj_spec]]
-ani = gp.plot(t,earth,ale_sat,[proj_diff,proj_spec],boxes,animation = False, globe = False)
+ani = gp.plot(t,earth,ale_sat,[projectile,ghostectile],[mechanics.boxes[projectile],ghostbox],animation = True, globe = False, marks = (1,ghostbox.markindex))
+#anighost = gp.plot(t,earth,ale_sat,[ghostectile],[mechanics.boxes[ghostectile]],animation = True, globe = False)
+#boxes = [mechanics.boxes[proj_diff],mechanics.boxes[proj_spec]]
+#ani = gp.plot(t,earth,ale_sat,[proj_diff,proj_spec],boxes,animation = False, globe = False)
 
 def solve(projectile,atmosphere):
     global earth
@@ -227,7 +228,8 @@ def solve(projectile,atmosphere):
 #sol, intf, subtract = solve(projectile,earth.atm)
 #---------------------------------------------------------
 #debugger
-
+print(dsmc.sentinel.is_alive())
+sp_writer = dsmc.writer
 v_0 = projectile.v_0
 nu = ale_sat.nu
 M = ale_sat.M

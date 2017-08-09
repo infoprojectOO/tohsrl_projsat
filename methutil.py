@@ -17,6 +17,12 @@ from sympy.core.symbol import symbols
 from sympy import exp, sqrt
 import scipy.optimize as opt
 
+def sphe2cart(r,lat,lon):
+    x = r*np.cos(lat)*np.cos(lon)
+    y = r*np.cos(lat)*np.sin(lon)
+    z = r*np.sin(lat)
+    return np.array([x,y,z])
+
 def permute(array, line1, line2, axis):
     if(axis==0):
         temp = array[:,line1].copy()
@@ -129,6 +135,32 @@ def integrate(y,x):
         intdo = np.vdot(yp[1:],dx) # Retrograde rectangle integration
         inty.append((intup+intdo)/2)
     return inty
+
+def minimum(dic):
+    dico = dic.copy()
+    km, vm = dico.popitem()
+    dico[km] = vm
+    for k,v in dico.items():
+        if(v<vm):
+            km = k
+            vm = v
+    return (km)
+
+def minima(dico,n):
+    if(len(dico.values())<n):
+        raise Exception("More indexes required than number of elements")
+    elif(n<=0):
+        raise Exception("Unacceptable number of minima search")
+    if n==1:
+        return [minimum(dico)]
+    else:
+        prec = minimum(dico)
+        copy = dico.copy()
+        copy[prec] = max(dico.values())+1
+        return [prec]+minima(copy,n-1)
+
+
+
 
 
 

@@ -5,10 +5,10 @@ Created on Thu Jun  1 10:59:16 2017
 @author: ASiapan
 """
 import numpy as np
+from enum import Enum
 import os
 import PIL
 from satclass import *
-import matplotlib
 import matplotlib.pyplot as mpl
 from mpl_toolkits.mplot3d import axes3d, proj3d
 import matplotlib.animation as animation
@@ -20,6 +20,20 @@ from methutil import cube
 
 R_G = 6378 * 10**3 # m 
 o = Orbit((30,0,0,0,0))
+
+class AxName(Enum):
+    RHO = "Air Density (kg/m³)"
+    TEMPP = "Projectile Temperature (T)"
+    TEMPA = "Air Temperature (T)"
+    Ma = "Mach Number"
+    Kn = "Knudsen Number"
+    Kn_mix = "Mixed Knudsen Number"
+    ALT = "Altitude (km)"
+    SPEED = "Speed (km/s)"
+    DRAG = "Drag Coefficient"
+    HEAT = "Total Integrated Heat Flow (W)"
+    HEATC = "Collisional Heat Flow (W)"
+    HEATR = "Radiative Heat Flow (W)"
 
 def convert2vert(X,Y,Z,*args,**kwargs):
     Z = np.atleast_2d(Z)
@@ -217,13 +231,13 @@ class Painter:
     def paint(self, obj, board=None, *args):
         if(board is None):
             board = self.board
-        if(isinstance(obj,Orbit)):
+        if(isinstance(obj,Orbit) or obj.__class__.__name__=='Orbit'):
             self.paintOrbit(obj,board,*args)
-        elif(isinstance(obj,Satellite)):
+        elif(isinstance(obj,Satellite) or obj.__class__.__name__=='Satellite'):
             self.paintSat(obj,board,*args)
-        elif(isinstance(obj,Projectile)):
+        elif(isinstance(obj,Projectile) or obj.__class__.__name__=='Projectile'):
             self.paintProjectile(obj,board,*args)
-        elif(isinstance(obj,Earth)):
+        elif(isinstance(obj,Earth) or obj.__class__.__name__=='Earth'):
             self.paintEarth(obj,board,*args)
         else:
             print(obj)
@@ -354,13 +368,20 @@ def palette(color_0,n_colors):
         colors.append(color)
     return colors
 
+def markplot(ax,x,y,id,color = 'r'):
+    xi = [x[i] for i in id]
+    yi = [y[i] for i in id]
+    ax.scatter(xi,yi, marker = 'x', s = 50, c = color)
+
 
 def plot(t,earth,sat,proj,hypbox,**kwargs):
     mpl.close("all")
 
+
     animation_on = kwargs.pop('animation',False)
     save_anim = kwargs.pop('save',False)
     see_globe = kwargs.pop('globe',False)
+    imark, marks = kwargs.pop('marks',(0,[]))
 
     fig3d = mpl.figure(1)
     ax = fig3d.add_subplot(111, projection='3d')
@@ -394,7 +415,8 @@ def plot(t,earth,sat,proj,hypbox,**kwargs):
     # Plot descent and sat
     figproj = mpl.figure(2)
     ax = figproj.add_subplot(211)
-    for p in range(n_traj): ax.plot(t,alt_list[p],color = colors[p])
+    for p in range(n_traj): ax.plot(proj[p].time,alt_list[p],color = colors[p])
+    if marks : markplot(ax,proj[imark].time,alt_list[imark],marks,colors[imark])
     ax.plot(t,(np.linalg.norm(sat.traj, axis=1)-R_G)*0.001,'g-')
     mpl.xlabel('Time (s)')
     mpl.ylabel('Altitude (km)')
@@ -402,6 +424,7 @@ def plot(t,earth,sat,proj,hypbox,**kwargs):
     
     ax = figproj.add_subplot(212)
     for p in range(n_traj): ax.plot(alt_list[p][1:],hypbox[p].rholine,color = colors[p])
+    if marks : markplot(ax,alt_list[imark][1:],hypbox[imark].rholine,marks,colors[imark])
     mpl.xlabel('Altitude (km)')
     mpl.ylabel('Density (kg/m³)')
     ax.set_yscale('log')
@@ -411,6 +434,7 @@ def plot(t,earth,sat,proj,hypbox,**kwargs):
     figvel = mpl.figure(4)
     ax = figvel.add_subplot(211)
     for p in range(n_traj): ax.plot(alt_list[p],vel_list[p], color = colors[p])
+    if marks : markplot(ax,alt_list[imark],vel_list[imark],marks,colors[imark])
     mpl.xlabel('Altitude (km)')
     mpl.ylabel('Speed (km/s)')
     mpl.title('Projectile velocity during descent in atmosphere')
@@ -426,17 +450,19 @@ def plot(t,earth,sat,proj,hypbox,**kwargs):
     figlos = mpl.figure(3)
     losvec = figlos.add_subplot(211)
     for p in range(n_traj):
-        m_plane = methu.plane_proj(proj[p].r_0,proj[p].v_0)
-        lostraj = m_plane.dot(sat.lostraj[proj[p]].T).T
-        losvec.plot(lostraj[:,0],lostraj[:,1], color = colors[p], marker = 'o', linestyle = ':')
+        if(proj[p].__class__.__name__ != 'Ghostectile'):
+            m_plane = methu.plane_proj(proj[p].r_0,proj[p].v_0)
+            lostraj = m_plane.dot(sat.lostraj[proj[p]].T).T
+            losvec.plot(lostraj[:,0],lostraj[:,1], color = colors[p], marker = 'o', linestyle = ':')
 
     losang = figlos.add_subplot(212)
     vec_ref = np.cross(sat.orbit.getVel(sat.nu),-sat.orbit.getPos(sat.nu))
     vec_ref = vec_ref/np.linalg.norm(vec_ref)
     vec_ref = np.tile(vec_ref,sat.traj.shape[0]).reshape(sat.traj.shape)
     for p in range(n_traj):
-        ang = methu.angle_vec(-sat.traj,sat.lostraj[proj[p]],vec_ref)*180/np.pi
-        losang.plot(t,ang,color = colors[p])
+        if(proj[p].__class__.__name__ != 'Ghostectile'):
+            ang = methu.angle_vec(-sat.traj,sat.lostraj[proj[p]],vec_ref)*180/np.pi
+            losang.plot(t,ang,color = colors[p])
     mpl.xlabel('Time (s)')
     mpl.ylabel('Angle ( ° )')
     mpl.title('Pointing angle relative to Nadir in orbital dextrogyre reference frame')
@@ -444,12 +470,29 @@ def plot(t,earth,sat,proj,hypbox,**kwargs):
     # Plot drag coefficient
     figdrag = mpl.figure(5)
     ax = figdrag.add_subplot(111)
-    for p in range(n_traj): ax.plot(hypbox[p].dragline,alt_list[p][1:],color = colors[p])
+    for p in range(n_traj): ax.plot(alt_list[p][1:],hypbox[p].dragline,color = colors[p])
     mpl.xlabel('Altitude (km)')
     mpl.ylabel('Drag coefficient')
     mpl.title('Projectile drag coefficient at different altitudes')
 
+    # Plot temperature and heating
+    figheat = mpl.figure(6)
+    ax = figheat.add_subplot(211)
+    for p in range(n_traj): ax.plot(alt_list[p][:],proj[p].temp,color = colors[p])
+    ax.set_xlabel('Altitude (km)')
+    ax.set_ylabel('Temperature (K)')
+    ax2 = ax.twinx()
+    for p in range(n_traj): ax2.plot(alt_list[p][1:], hypbox[p].heatline, color = colors[p], linestyle = '--')
+    ax2.set_ylabel('Heat Flow (W)')
+
     return ani
+
+def quickplot(AxX,AxY,title):
+    fig, ax = mpl.subplots()
+    ax.plot(AxX[0],AxY[0],color = 'r')
+    ax.set_xlabel(AxX[1].value)
+    ax.set_ylabel(AxY[1].value)
+    ax.set_title(title)
 
 def compare(t,proj,hypbox):
     n_traj = len(proj)
@@ -475,8 +518,8 @@ def compare(t,proj,hypbox):
     
     ax = figdrag.add_subplot(313)
     ax.plot(t,vel_comp,'r-')
-    mpl.xlabel('Time (s)')
-    mpl.ylabel('Velocity difference (m/s)')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Velocity difference (m/s)')
 
     
 

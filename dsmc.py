@@ -12,7 +12,66 @@ import numpy as np
 import random as rand
 from itertools import product
 from dsmcgraph import showfield
+import os
+from enum import Enum
+import pathlib
+import glob
 
+sparta_folder = "\\dsmc\\"
+
+class SimInput(Enum):
+    AIR_NDENSITY = "nv_air"
+    AIR_TEMPERATURE = "T_air"
+    SPEED = "v_air"
+    PROJ_TEMPERATURE = "T_proj"
+
+class Sparta_Writer:
+    base_name = "axi.in"
+    example_input = "axi.ex"
+    prime_input = "axi.init"
+    input_path = os.getcwd()+sparta_folder
+    token = "§"
+
+    def __init__(self):
+        self.clear_folder()
+
+    def write_simulation(self,sim_param,fresh = False):
+        simid = sim_param.pop("name")
+        simname, siminstr = self.prepare_simfile(simid,fresh)
+        with open(self.input_path+simname,"w") as f:
+            for k,v in sim_param.items():
+                siminstr = siminstr.replace(self.token+k.value,str(v),1)
+            f.write(siminstr)
+        sim_param["simname"] = simname
+        return simname
+
+
+    def prepare_simfile(self,id,fresh):
+        path = self.input_path
+        protofile = self.example_input
+        filename = self.base_name + "_" + id
+        if fresh: 
+            protofile = self.prime_input
+            filename = self.prime_input + "_" + id
+        with open(path+protofile,"r", encoding='utf-8') as sample_file:
+            sample_instr = sample_file.read()
+        simfile = pathlib.Path(path+filename)
+        simfile.write_text("")
+        return filename, sample_instr
+
+    def clear_folder(self):
+        clearlist = glob.glob("."+sparta_folder+self.base_name+"_*")
+        clearlist.extend(glob.glob("."+sparta_folder+self.prime_input+"_*"))
+        print("Clearing folder for new simulation inputs : ",str(len(clearlist))," file(s) removed")
+        for clearfile in clearlist:
+            os.remove(clearfile)
+
+
+
+
+
+
+'''
 class Glocule:
 
     def __init__(self,r_gloc,v_gloc,cell):
@@ -104,6 +163,7 @@ def genmolc(cells,cell_size,n_gloc,vel_gen):
             glocs.append(Glocule(r_gloc,v_gloc,c))
     return glocs
 
-glocs = genmolc(cells,cell_size,n_gloc,maxwell_distr((U,0,0),T))
+# glocs = genmolc(cells,cell_size,n_gloc,maxwell_distr((U,0,0),T))
 
-showfield(cells,(x_bound,y_bound,z_bound))
+# showfield(cells,(x_bound,y_bound,z_bound))
+'''
