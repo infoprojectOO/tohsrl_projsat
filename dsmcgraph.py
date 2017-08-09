@@ -22,6 +22,7 @@ def showfield(cells,boundaries):
 
 
 def formMatrix(cells):
+    cells = np.array(cells)
     mat = np.zeros(cells.shape[0:2])
     for row in range(cells.shape[0]):
         for col in range(cells.shape[1]):

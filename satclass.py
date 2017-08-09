@@ -529,6 +529,7 @@ class Atmosphere:
         b_air = cst.b_air # kg/m.s(K)^0.5
         S_air = cst.S_air # K
 
+
         def __init__(self,rho,T):
             self.rho = rho # mass density
             self.nv = rho*self.N_A/self.MM_air # particle density

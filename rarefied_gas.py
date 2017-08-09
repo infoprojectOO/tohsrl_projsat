@@ -115,8 +115,7 @@ while (Kn >= 1 and n_it <= N_itmax):
 	# mu_G = earth's gravity constant (m³/s²)
 	# d_p = projectile diameter (m)
 	# a_p = projectile gravity acceleration vector (m/s²)
-
-	alt = np.linalg.norm(r_p)-R_G 
+ 
 	volume = S_p*np.linalg.norm(v_p)*dt # Tube volume covered by projectile during dt
 	n_volmean = density(alt*0.001)*N_A/(MM_air)
 	lpm = 1/(m.sqrt(2)*n_volmean*sigma_c)
@@ -130,6 +129,7 @@ while (Kn >= 1 and n_it <= N_itmax):
 
 	#r_p = r_p + (v_p_old+v_p)*0.5*dt
 	r_p = r_p + (2*v_p)*0.5*dt
+   alt = np.linalg.norm(r_p)-R_G
 
 
 	traj_p = np.vstack((traj_p,r_p))

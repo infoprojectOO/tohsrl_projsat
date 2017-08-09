@@ -13,7 +13,7 @@ import methutil as methu
 import sys
 import graphics as gp
 import numpy as np
-import sgp4
+#import sgp4
 import matplotlib.pyplot as mpl
 import datetime
 import methutil as methu
@@ -23,6 +23,8 @@ import param  as cst
 import subprocess
 from satclass import *
 from graphics import Painter
+from ParametersEditor import ParamInput
+from ds2v2py import manSimIter
 # del sys.modules['satclass']
 # import satclass
 # reload(satclass)
@@ -259,3 +261,27 @@ rot_vec = np.cross(ref,pointing)
 attitude = Quaternion(rot_vec/np.linalg.norm(rot_vec),m.asin(np.linalg.norm(rot_vec)))
 
 xd, yd, zd = np.array(ale_sat.attitude.to_matrix()).dot(np.array([0,0,ale_sat.width]))+r_sat
+
+
+path = r'D:\Program\DSMC\DS2V\DS2VD.dat'
+lat, lon = earth.pos2coord(projectile.r)
+air = earth.atm.at(0,np.linalg.norm(projectile.r)-R_G,lat, lon)
+print(air.p)
+
+print('Starting contdition:\nDensity = ' + str(air.nv) + ',\t Temp = ' + str(air.T) + ',\t Vx = ' + str(np.linalg.norm(projectile.v)) + '\nat alt = ' + str((np.linalg.norm(projectile.r)-R_G)/1000))
+ParamInput(air.nv,air.T,air.T,np.linalg.norm(projectile.v),path)
+
+print('\nNow please open DS2V for simulation')
+check = ''
+cont = 'y'
+i_it = 0
+while (check != 'r'):
+    check = input('Ready? (r): ')
+while (cont == 'y'):
+    Cd = input('Please retrieve Drag Coef from DS2V\n Cd = ')
+    rho, nv, T, v_pnorm, alt, projectile = manSimIter(projectile,earth,float(Cd))
+    ParamInput(nv,T,T,v_pnorm,path)
+    print('Density = ' + str(nv) + ',\t Temp = ' + str(T) + ',\t Vx = ' + str(v_pnorm) + '\nat alt = ' + str(alt/1000))
+    print('Surface:' + str(projectile.S))
+    cont = input('Continue? (y/n): ')
+

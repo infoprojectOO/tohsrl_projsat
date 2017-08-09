@@ -328,7 +328,6 @@ class Arrow3D(FancyArrowPatch):
         FancyArrowPatch.draw(self, renderer)
 
         
-
 def animate(t,painter,proj,ax, fig, save=False):
     line_p, = ax.plot([], [], [], lw = 2, color = 'r')
     # for collection in painter.get_collections():
