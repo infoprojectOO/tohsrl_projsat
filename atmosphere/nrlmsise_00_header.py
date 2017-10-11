@@ -123,7 +123,7 @@ class nrlmsise_input:
         self.year = year #/* year, currently ignored */
         self.doy = doy #/* day of year */
         self.sec = sec #/* seconds in day (UT) */
-        self.alt = alt #/* altitude in kilometes */
+        self.alt = alt #/* altitude in kilometers */
         self.g_lat = g_lat #/* geodetic latitude */
         self.g_long = g_long #/* geodetic longitude */
         self.lst = lst #/* local apparent solar time (hours), see note above */

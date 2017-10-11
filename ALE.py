@@ -3,9 +3,11 @@
 Created on Thu May 11 11:44:14 2017
 
 @author: ASiapan
+
+Main file for simulating projectile atmospheric reentry along with satellite orbiting and tracking.
+
 """
 import math as m
-from density import density
 import scipy as sp
 import random as rand
 from importlib import reload
@@ -14,15 +16,13 @@ import sys
 import graphics as gp
 import numpy as np
 #import sgp4
+import traceback
 import matplotlib.pyplot as mpl
 import datetime
 import methutil as methu
-from matplotlib.patches import FancyArrowPatch
-from itertools import product, combinations
 import param  as cst
-import subprocess
 from satclass import *
-from graphics import Painter
+from physenv import *
 from ParametersEditor import ParamInput
 from ds2v2py import manSimIter
 # del sys.modules['satclass']
@@ -30,6 +30,8 @@ from ds2v2py import manSimIter
 # reload(satclass)
 
 def tle2params(filename):
+    """ Function reads data from a file and stores it in a data structure object
+    """
     f = open(filename,'r')
     line1 = f.readline()
     line2 = f.readline()
@@ -37,12 +39,12 @@ def tle2params(filename):
     inclination, right_ascension, eccentricity, argument_periapsis, mean_anomaly, mean_motion =\
         float(line2[8:16]), float(line2[17:25]), float("0." + line2[26:33]), float(line2[34:42]), float(line2[43:51]),\
         float(line2[52:63])
-    semimajoraxis = m.pow(mu_G/mean_motion**2,1./3)
+    semimajoraxis = m.pow(cst.mu_G/mean_motion**2,1./3)
     data = {'a':semimajoraxis, 'e' : eccentricity, 'i' : inclination, 'Om' : right_ascension, 'wp' : argument_periapsis, 'M' : mean_anomaly, 
             'Y' : year, 'D' : day, 'B_' : ballistic_star_coefficient}
     return data
 
-# mu_G = 398600.4418 * 10**9 # m³/s²
+# cst.mu_G = 398600.4418 * 10**9 # m³/s²
 # R_G = 6378.1 * 10**3 # m 
 
 # MM_air = 0.0289644 # kg/mol
@@ -53,7 +55,7 @@ def tle2params(filename):
 # Satellite orbital parameters
 inputTLE = False
 TLEfile = 'EGM96coefficients'
-propagator = 'Classic'
+propagator = 'Classic' # choose between classical keplerian orbits and gravity + drag corrected propagator for the satellite (to be implemented yet ! --- very straightforward though )
 
 if(inputTLE):
     params = tle2params(TLEfile)
@@ -67,7 +69,7 @@ if(inputTLE):
     day_sat = params['D']
     elapsed = ((year_sat-2000)*365.25 + day_sat)*86400
 else:
-    a_sat = R_G + 350 * 10**3 # semimajor axis - m
+    a_sat = cst.R_G + 400 * 10**3 # semimajor axis - m
     e_sat = 0.0 # ellipticity
     i_sat = 0. * m.pi/180 # inclination - rad
     Om_sat = 0. * m.pi/180 # ascend node - rad
@@ -79,159 +81,109 @@ else:
     day_sat = date.day # day of the year - days
     elapsed = (date - dateref).total_seconds()
 
-n = m.sqrt(mu_G/a_sat**3)
+n = m.sqrt(cst.mu_G/a_sat**3)
 
 timelap = 0.25*2*m.pi / n # s
-
-# # Projectile properties
-# d_p = 0.01 #m
-# rho_p = 8.96 * 1000 # kg/m³ copper
 
 # Ejection parameters
 eject_theta = 180. * m.pi/180. # (inverse) Pitching
 eject_phi = 0. * m.pi/180. # (inverse) Yaw
 eject_v_abs = 350 # m/s
-eject_v_rel = 0.9
+eject_v_rel = 0.9 # relative velocity fraction from satellite (not really used)
 
 #Object creation
 
-mechanics = Mechanics.initialise()
+    #Physical environment
 earth = Earth.create()
 earth.setDate(date)
-projectile = Projectile(cst.d_p,cst.Material.COPPER)
-proj_spec = Projectile(cst.d_p,cst.Material.COPPER,Projectile.smooth)
-proj_diff = Projectile(cst.d_p,cst.Material.COPPER,Projectile.coarse)
 orbit = Orbit((a_sat,e_sat,i_sat,Om_sat,wp_sat))
+if(inputTLE):
+    nu0_sat = orbit.anomaly(M0_sat,'true')
+    # Satellite
+ale_sat = Satellite(orbit,nu0_sat,cst.R_G/10)
+    # Time-management
+mechanics = Mechanics.initialise()
 schedule = Schedule()
 timegen = TimeGenerators()
 mechanics.set(earth,schedule)
-
-
-if(inputTLE):
-    nu0_sat = orbit.anomaly(M0_sat,'true')
-ale_sat = Satellite(orbit,nu0_sat,R_G/10)
-
 mechanics.add_animate(ale_sat)
 mechanics.add_animate(earth)
 
+    # Projectile(s)
+projectile = Projectile(cst.d_p,cst.Material.COPPER, ablation = 0); #projectile.add_spec(DynamicBox.OVERRIDE_DRAG, 2)
+# proj_spec = Projectile(cst.d_p,cst.Material.COPPER,Projectile.smooth)
+# proj_diff = Projectile(cst.d_p,cst.Material.COPPER,Projectile.coarse)
+#proj0 = Projectile(cst.d_p,cst.Material.COPPER); proj0.add_spec(DynamicBox.OVERRIDE_AERODOM, AeroDom.Free_Molecular_Flow)#proj0.add_spec(DynamicBox.OVERRIDE_DRAG, 2)
+proj1 = Projectile(cst.d_p,cst.Material.COPPER); proj1.add_spec(DynamicBox.OVERRIDE_DRAG, 1)
+proj2 = Projectile(cst.d_p,cst.Material.COPPER); proj2.add_spec(DynamicBox.OVERRIDE_DRAG, 2)
+# projectiles = [projectile,proj1,proj2]
+projCu = Projectile(cst.d_p,cst.Material.COPPER,finition = 0.8, ablation = 0.01, id = 'Cu')
+projZn = Projectile(cst.d_p,cst.Material.ZINC,finition = 0.8, ablation = 0.01, id = 'Zn')
+projFe = Projectile(cst.d_p,cst.Material.IRON,finition = 0.8, ablation = 0.01, id = 'Fe')
+projTi = Projectile(cst.d_p,cst.Material.TITANIUM,finition = 0.8, ablation = 0.01, id = 'Ti')
+# projs = [projCu,projZn,projFe,projTi]
+projperm = Projectile(cst.d_p,cst.Material.COPPER,finition = 0.8, ablation = 0.01)
+projmelt = Projectile(cst.d_p,cst.Material.COPPER,finition = 0.8, ablation = 0)
+
+projs = [projFe] # List of all projectiles used (launched)
+
 schedule.plan('Orbiting phase', None, timelap, time = 0, duration = iter([timelap]))
-schedule.plan('Projectile ejection', ale_sat.eject, projectile,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projectile,10**4))
-# schedule.plan('Coarse Projectile ejection', ale_sat.eject, proj_diff,(eject_v_abs*0.95,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(proj_diff) )
-# schedule.plan('Smooth Projectile ejection', ale_sat.eject, proj_spec,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(proj_spec) )
+# projectile = Projectile(cst.d_p,cst.Material.COPPER,finition = Projectile.coarse,ablation=0)
+# projectile.add_spec(DynamicBox.OVERRIDE_DRAG, 2)
+# schedule.plan('Projectile ejection Cu', mechanics.eject, ale_sat, projCu,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projCu) )
+# schedule.plan('Projectile ejection Zn', mechanics.eject, ale_sat, projZn,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projZn) )
+# schedule.plan('Projectile ejection Fe', mechanics.eject, ale_sat, projFe,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projFe) )
+# schedule.plan('Projectile ejection Ti', mechanics.eject, ale_sat, projTi,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projTi) )
+schedule.plan('Projectile ejection perm', mechanics.eject,ale_sat, projperm,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projperm) )
+schedule.plan('Projectile ejection melt', mechanics.eject,ale_sat, projmelt,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projmelt), id = 'melt' )
 
-mechanics.start()
+# schedule.plan('Projectile ejection', mechanics.eject, ale_sat, projectile,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(projectile))
+#schedule.plan('Projectile ejection 0', ale_sat.eject, proj0,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(proj0) )
+# schedule.plan('Projectile ejection 2', ale_sat.eject, proj2,(eject_v_abs,eject_theta,eject_phi), time = timelap, duration = timegen.projectileTimeGenerator(proj2) )
 
-t = mechanics.timeline[1:]
+try : # start the universe clock
+    mechanics.start()
+except:
+    traceback.print_exc()
+finally: # Retrieve all data computed so far and abort all running threads
+    t = mechanics.timeline[1:]
+    for p in mechanics.boxes:
+        if p.__class__.__name__ == 'Projectile':
+            hypbox = mechanics.boxes[p]
+            ghostectile = hypbox.ghost
+            ghostbox = hypbox.ghostbox
+            dsmc = hypbox.dsmc
+            db = dsmc.database
+            dsmc.abort_all()
+            dsmc.save_data()
 
 r0_sat = orbit.getPos(ale_sat.nu_0)
 r_sat = orbit.getPos(ale_sat.nu)
 v_sat = orbit.getVel2(ale_sat.nu)
 
-print('Satellite Starting position : ',r0_sat, )
-print('Satellite Flight time : ',timelap*n/(2*m.pi))
+print('Satellite Starting position : ',r0_sat)
 print('Satellite Ending position : ',r_sat)
 print('Satellite Ending speed : ',v_sat)
 
 
-# print('Projectile ejection speed : ', np.linalg.norm(projectile.v_0))
-# print('Projectile inbound speed : ', np.linalg.norm(projectile.v))
-# print(projectile.v_0)
-
-hypbox = mechanics.boxes[projectile]
-ghostectile = hypbox.ghost
-ghostbox = hypbox.ghostbox
-dsmc = hypbox.dsmc
-dsmc.abort_all()
-
-
 # Plot orbit trajectory
-ani = gp.plot(t,earth,ale_sat,[projectile,ghostectile],[mechanics.boxes[projectile],ghostbox],animation = True, globe = False, marks = (1,ghostbox.markindex))
+
+# boxes = [mechanics.boxes[p] for p in projs]+[ghostbox]
+# palette = gp.palette(0,len(projs),natural = True)
+# ani, axdic = gp.plot(t,earth,ale_sat,projs+[ghostectile],boxes,animation = False, save = False, globe = False, dsmcdata = dsmc.database.values(),  marks = (1,ghostbox.markindex))
+#ani, axdic = gp.plot(t,earth,ale_sat,[projectile],[mechanics.boxes[projectile]],animation = True, save = False, globe = False)
+#ani, axdic = gp.plot(t,earth,ale_sat,[projectile,ghostectile],[mechanics.boxes[projectile],ghostbox],animation = True, save = False, globe = False, marks = (1,ghostbox.markindex), dsmcdata = db.values())
+ani, axdic = gp.plot(t,earth,ale_sat,[projperm,projmelt],[mechanics.boxes[projperm],mechanics.boxes[projmelt]],animation = False, save = False, globe = False)
+#ani = gp.plot(t,earth,ale_sat,[proj0],[mechanics.boxes[proj0]],animation = True)
+# ani = gp.plot(t,earth,ale_sat,[proj1,proj2],[mechanics.boxes[proj1],mechanics.boxes[proj2]],animation = True, globe = False)
 #anighost = gp.plot(t,earth,ale_sat,[ghostectile],[mechanics.boxes[ghostectile]],animation = True, globe = False)
 #boxes = [mechanics.boxes[proj_diff],mechanics.boxes[proj_spec]]
 #ani = gp.plot(t,earth,ale_sat,[proj_diff,proj_spec],boxes,animation = False, globe = False)
-
-def solve(projectile,atmosphere):
-    global earth
-    m = projectile.m
-    S = projectile.S
-    r0 = projectile.traj[0,:] # Starting position
-    v0 = projectile.vel[0,:] # Starting velocity
-    r_end = projectile.traj[-1,:] # Ending position
-
-    lat, lon, name = Reference.get_refloc()
-    transorbit = Orbit.retrieve(r0,v0)
-
-    # --------------------- old not working junk !
-    # x = v | z = r
-    # x,z = symbols('x, z', real=True)
-    # a,b = fit_atm(atmosphere)
-    # eq = [ m*mu_G/(z*1000+R_G)**2  - 0.5*1*(a*exp(b*z))*S*x**2, 
-    #        x - sqrt(mu_G/(R_G+z*1000)-29.56*10**6)]
-    # sym = [x,z]
-    # sol = nls(eq,sym)
-    # ----------------------
-
-    nu0, nu_end = transorbit.get_nu([np.linalg.norm(r0),50*1000+R_G])
-    nu_scale = np.linspace(nu0,nu_end,1001)
-    orbtraj = transorbit.getPos(nu_scale)
-    orbvel = transorbit.getVel(nu_scale)
-    h_scale = (np.linalg.norm(orbtraj,axis = 1)-R_G)*0.001
-    rho_scale, h_scale = atmosphere.profile(h_scale)
-    Fg = m*mu_G/(R_G+h_scale*1000)**2
-    Fd = 0.5*1*S*rho_scale*np.linalg.norm(orbvel,axis=1)**2
-    slope_scale = transorbit.get_slope(nu_scale)
-    h_low = np.argmin(abs(h_scale-50))
-    h_upp = np.argmin(abs(h_scale-120))
-    resind = np.argmin(abs(Fd[h_upp:h_low]-(Fg[h_upp:h_low]*np.sin(-slope_scale[h_upp:h_low]))))+h_upp
-
-    ht = h_scale[resind] # target altitude    
+# gp.compare(ale_sat,[proj1,proj2],[mechanics.boxes[proj1],mechanics.boxes[proj2]])
 
 
-    intf = methu.integrate((Fd[:resind],(Fg*np.sin(-slope_scale))[:resind]),orbtraj[:resind])
-    gain = mu_G/(R_G+h_scale[-1]) - mu_G/(R_G+ht)
-    subtract = gain*(1-abs(intf[0])/abs(intf[1]))
-
-    sol = (h_scale[resind], np.linalg.norm(orbvel[resind,:]), np.sqrt(np.linalg.norm(orbvel[0,:])**2+2*subtract))
-    figforce = mpl.figure()
-    lg,ld = mpl.plot(h_scale,Fg*np.sin(-slope_scale),h_scale,Fd)
-    mpl.title('Drag force extrapolation vs. projectile weight projected on its trajectory')
-    mpl.xlabel('Altitude (km)')
-    mpl.ylabel('Force (N)')
-    mpl.legend((lg,ld), ('Weight','Drag'), loc=1)
-
-    figtraj = mpl.figure()
-    axtraj = figtraj.add_subplot(111,projection='3d')
-    renderer = Painter(figtraj,axtraj)
-    #renderer.paint(transorbit)
-    #renderer.paint(earth)
-   
-    axtraj.plot(orbtraj[:,0], orbtraj[:,1], orbtraj[:,2],'c-')
-    axtraj.plot(projectile.traj[:,0],projectile.traj[:,1],projectile.traj[:,2],'r-')
-
-    #-------------------------------- Debugging ---------------------------
-
-    # Dh = h_scale[0]-h_scale[-1]
-    # dr = (np.roll(orbtraj,1,axis=0)-orbtraj)[0:-1]
-    # drnorm = np.linalg.norm(dr,axis=1)
-    # Dh_approx = np.vdot(drnorm,np.sin(abs(slope_scale[:-1])))
-
-    # nu_hist = transorbit.get_nu(np.linalg.norm(projectile.traj,axis=1))
-    # r_hist = transorbit.getPos(nu_hist)
-    # v_hist = transorbit.getVel(nu_hist)
-    # h_hist = (np.linalg.norm(r_hist,axis=1)-R_G)*0.001
-    # mpl.figure()
-    # mpl.plot(h_hist,np.linalg.norm(projectile.vel,axis=1),'r-')
-    # mpl.plot(h_hist,np.linalg.norm(v_hist,axis=1),'c-')
-
-    #----------------------------------------------------------------------
-
-    return sol, intf, subtract
-
-#sol, intf, subtract = solve(projectile,earth.atm)
-#---------------------------------------------------------
 #debugger
-print(dsmc.sentinel.is_alive())
-sp_writer = dsmc.writer
+
 v_0 = projectile.v_0
 nu = ale_sat.nu
 M = ale_sat.M
@@ -244,16 +196,16 @@ rel2abs = orbit.rel2abs
 vel2rel = orbit.getVel2Rel(nu)
 
 r = a_sat*(1-e_sat**2)/(1+e_sat*m.cos(nu))
-v = m.sqrt(mu_G*(2/r-1/a_sat))
+v = m.sqrt(cst.mu_G*(2/r-1/a_sat))
 rnorm = np.linalg.norm(r_sat)
 vnorm = np.linalg.norm(v_sat)
 v_radmeth = orbit.getVel(nu)
 v_tanmeth = orbit.getVel2(nu)
 
-v_x = -m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*m.sin(nu)
-v_y = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*(e_sat+m.cos(nu))
-v_r = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*e_sat*m.sin(nu)
-v_t = m.sqrt(mu_G/(a_sat*(1-e_sat**2)))*(1+e_sat*m.cos(nu))
+v_x = -m.sqrt(cst.mu_G/(a_sat*(1-e_sat**2)))*m.sin(nu)
+v_y = m.sqrt(cst.mu_G/(a_sat*(1-e_sat**2)))*(e_sat+m.cos(nu))
+v_r = m.sqrt(cst.mu_G/(a_sat*(1-e_sat**2)))*e_sat*m.sin(nu)
+v_t = m.sqrt(cst.mu_G/(a_sat*(1-e_sat**2)))*(1+e_sat*m.cos(nu))
 
 ref = np.array([0.,0.,1.])
 pointing = r_sat/np.linalg.norm(r_sat)
@@ -263,25 +215,25 @@ attitude = Quaternion(rot_vec/np.linalg.norm(rot_vec),m.asin(np.linalg.norm(rot_
 xd, yd, zd = np.array(ale_sat.attitude.to_matrix()).dot(np.array([0,0,ale_sat.width]))+r_sat
 
 
-path = r'D:\Program\DSMC\DS2V\DS2VD.dat'
-lat, lon = earth.pos2coord(projectile.r)
-air = earth.atm.at(0,np.linalg.norm(projectile.r)-R_G,lat, lon)
-print(air.p)
+# path = r'D:\Program\DSMC\DS2V\DS2VD.dat'
+# lat, lon = earth.pos2coord(projectile.r)
+# air = earth.atm.at(0,np.linalg.norm(projectile.r)-R_G,lat, lon)
+# print(air.p)
 
-print('Starting contdition:\nDensity = ' + str(air.nv) + ',\t Temp = ' + str(air.T) + ',\t Vx = ' + str(np.linalg.norm(projectile.v)) + '\nat alt = ' + str((np.linalg.norm(projectile.r)-R_G)/1000))
-ParamInput(air.nv,air.T,air.T,np.linalg.norm(projectile.v),path)
+# print('Starting contdition:\nDensity = ' + str(air.nv) + ',\t Temp = ' + str(air.T) + ',\t Vx = ' + str(np.linalg.norm(projectile.v)) + '\nat alt = ' + str((np.linalg.norm(projectile.r)-R_G)/1000))
+# ParamInput(air.nv,air.T,air.T,np.linalg.norm(projectile.v),path)
 
-print('\nNow please open DS2V for simulation')
-check = ''
-cont = 'y'
-i_it = 0
-while (check != 'r'):
-    check = input('Ready? (r): ')
-while (cont == 'y'):
-    Cd = input('Please retrieve Drag Coef from DS2V\n Cd = ')
-    rho, nv, T, v_pnorm, alt, projectile = manSimIter(projectile,earth,float(Cd))
-    ParamInput(nv,T,T,v_pnorm,path)
-    print('Density = ' + str(nv) + ',\t Temp = ' + str(T) + ',\t Vx = ' + str(v_pnorm) + '\nat alt = ' + str(alt/1000))
-    print('Surface:' + str(projectile.S))
-    cont = input('Continue? (y/n): ')
+# print('\nNow please open DS2V for simulation')
+# check = ''
+# cont = 'y'
+# i_it = 0
+# while (check != 'r'):
+#     check = input('Ready? (r): ')
+# while (cont == 'y'):
+#     Cd = input('Please retrieve Drag Coef from DS2V\n Cd = ')
+#     rho, nv, T, v_pnorm, alt, projectile = manSimIter(projectile,earth,float(Cd))
+#     ParamInput(nv,T,T,v_pnorm,path)
+#     print('Density = ' + str(nv) + ',\t Temp = ' + str(T) + ',\t Vx = ' + str(v_pnorm) + '\nat alt = ' + str(alt/1000))
+#     print('Surface:' + str(projectile.S))
+#     cont = input('Continue? (y/n): ')
 

@@ -5,7 +5,6 @@ Created on Fri Jul 21 12:23:47 2017
 @author: ninja_000
 """
 import math as m
-from density import density
 import numpy as np
 from satclass import *
 import random as rand

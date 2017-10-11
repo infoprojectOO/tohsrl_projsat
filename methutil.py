@@ -11,11 +11,11 @@ import numpy as np
 import math as m
 from itertools import product
 from mathutils import Quaternion, Vector
-from density import density
 from sympy.solvers.solveset import nonlinsolve as nls
 from sympy.core.symbol import symbols
 from sympy import exp, sqrt
 import scipy.optimize as opt
+import random, string
 
 def sphe2cart(r,lat,lon):
     x = r*np.cos(lat)*np.cos(lon)
@@ -69,7 +69,7 @@ def plane_proj(vec1,vec2):
     vec3 = np.cross(vec1,vec2)
     return np.vstack((vec1,vec2,vec3))
 
-def angle_vec(vec1,vec2,ref):
+def angle_vec(vec1,vec2,ref=0):
     nan = float('nan')
     # ax1 = int(len(vec1.shape)>=2)
     # ax2 = int(len(vec2.shape)>=2)
@@ -79,16 +79,18 @@ def angle_vec(vec1,vec2,ref):
     n = vec1.shape[0]
     vec1 = vec1/np.linalg.norm(vec1,axis=1).reshape((n,1))
     vec2 = vec2/np.linalg.norm(vec2,axis=1).reshape((n,1))
-    print(vec1[vec1==nan],vec2[vec2==nan])
+#    print(vec1[vec1==np.array([nan,nan,nan])],vec2[vec2==np.array([nan,nan,nan])])
     vec1[vec1==nan] = 0 # Zero division fixing
     vec2[vec2==nan] = 0 # Zero division fixing
 
+    if(ref is 0):
+        ref = np.cross(vec1,vec2)
     vec3 = np.cross(vec1,vec2)
     sign = np.sign(np.sum(vec3*ref,axis = 1))
     sin = sign*np.linalg.norm(vec3,axis = 1)
     cos = np.sum(vec1*vec2,axis = 1)
     cos[cos>1.] = 1.
-    cos[cos<1.] = 1.
+    cos[cos<-1.] = -1.
     ang = angs = np.arcsin(sin)
     angc = np.arccos(cos)
     for i in range(len(ang)):
@@ -158,6 +160,34 @@ def minima(dico,n):
         copy = dico.copy()
         copy[prec] = max(dico.values())+1
         return [prec]+minima(copy,n-1)
+
+def find_closest(lst,val,i = 0,leap = None,way = None):
+    if(leap == 0) : return i
+    if(not leap): leap = m.ceil(len(lst)/3)
+    prev = lst[i]
+    newr = lst[(i+leap)%len(lst)]
+    newl = lst[(i-leap)%len(lst)]
+    if(abs(val-prev) >= abs(val-newr)):
+        i = (i+leap)%len(lst)
+        if(way == 1): leap = (len(lst)-i)
+        way = 1
+    elif(abs(val-prev) >= abs(val-newl)):
+        i = (i-leap)%len(lst)
+        if(way == -1): leap = i
+        way = -1
+    elif(way==0):
+        pass
+    leap /= 2
+    return find_closest(lst,val,m.ceil(i),m.floor(leap),way)
+
+def version_gen(pre,n):
+   letters = string.ascii_lowercase
+   digits = string.digits
+   pre += ''.join(random.choice(digits) for i in range(int(n)))
+   pre += ''.join(random.choice(letters))
+   return pre
+
+
 
 
 

@@ -14,7 +14,7 @@ import numpy as np
 class Sparta_Reader:
     
     def __init__(self):
-        
+        pass
     
     def readsurf(self):
         step = [] #this should be the parameter of the object which gives the information of selected timestep
